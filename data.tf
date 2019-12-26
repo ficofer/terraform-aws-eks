@@ -221,3 +221,7 @@ data "aws_iam_instance_profile" "custom_worker_group_launch_template_iam_instanc
     local.workers_group_defaults["iam_instance_profile_name"],
   )
 }
+
+data "aws_eks_cluster" "my-eks-cluster" {
+  name = var.cluster_name
+}

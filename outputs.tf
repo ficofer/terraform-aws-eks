@@ -165,3 +165,7 @@ output "node_groups_iam_role_arns" {
     node_group.node_group_name => node_group.node_role_arn
   }
 }
+
+output "node_group_sg_id" {
+  value = data.aws_eks_cluster.my-eks-cluster.vpc_config[*].cluster_security_group_id
+}
