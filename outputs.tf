@@ -63,6 +63,11 @@ output "kubeconfig_filename" {
   value       = concat(local_file.kubeconfig.*.filename, [""])[0]
 }
 
+output "oidc_provider_arn" {
+  description = "The ARN of the OIDC Provider if `enable_irsa = true`."
+  value       = var.enable_irsa ? concat(aws_iam_openid_connect_provider.oidc_provider[*].arn, [""])[0] : null
+}
+
 output "workers_asg_arns" {
   description = "IDs of the autoscaling groups containing workers."
   value = concat(
@@ -158,12 +163,9 @@ output "worker_autoscaling_policy_arn" {
   value       = concat(aws_iam_policy.worker_autoscaling[*].arn, [""])[0]
 }
 
-output "node_groups_iam_role_arns" {
-  description = "IAM role ARNs for EKS node groups"
-  value = {
-    for node_group in aws_eks_node_group.workers :
-    node_group.node_group_name => node_group.node_role_arn
-  }
+output "node_groups" {
+  description = "Outputs from EKS node groups. Map of maps, keyed by var.node_groups keys"
+  value       = module.node_groups.node_groups
 }
 
 output "node_group_sg_id" {

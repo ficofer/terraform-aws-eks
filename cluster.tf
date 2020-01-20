@@ -19,6 +19,7 @@ resource "aws_eks_cluster" "this" {
     subnet_ids              = var.subnets
     endpoint_private_access = var.cluster_endpoint_private_access
     endpoint_public_access  = var.cluster_endpoint_public_access
+    public_access_cidrs     = var.cluster_endpoint_public_access_cidrs
   }
 
   timeouts {
@@ -31,6 +32,11 @@ resource "aws_eks_cluster" "this" {
     aws_iam_role_policy_attachment.cluster_AmazonEKSServicePolicy,
     aws_cloudwatch_log_group.this
   ]
+  provisioner "local-exec" {
+    command = <<EOT
+    until curl -k -s ${aws_eks_cluster.this[0].endpoint}/healthz >/dev/null; do sleep 4; done
+  EOT
+  }
 }
 
 resource "aws_security_group" "cluster" {
