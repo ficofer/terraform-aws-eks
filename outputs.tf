@@ -1,6 +1,9 @@
 output "cluster_id" {
   description = "The name/id of the EKS cluster."
   value       = element(concat(aws_eks_cluster.this.*.id, list("")), 0)
+  # So that calling plans wait for the cluster to be available before attempting
+  # to use it. They will not need to duplicate this null_resource
+  depends_on = [null_resource.wait_for_cluster]
 }
 
 output "cluster_arn" {
@@ -24,7 +27,7 @@ output "cluster_version" {
 }
 
 output "cluster_security_group_id" {
-  description = "Security group ID attached to the EKS cluster."
+  description = "Security group ID attached to the EKS cluster. On 1.14 or later, this is the 'Additional security groups' in the EKS console."
   value       = local.cluster_security_group_id
 }
 
@@ -48,6 +51,11 @@ output "cluster_oidc_issuer_url" {
   value       = flatten(concat(aws_eks_cluster.this[*].identity[*].oidc.0.issuer, [""]))[0]
 }
 
+output "cluster_primary_security_group_id" {
+  description = "The cluster primary security group ID created by the EKS cluster on 1.14 or later. Referred to as 'Cluster security group' in the EKS console."
+  value       = local.cluster_primary_security_group_id
+}
+
 output "cloudwatch_log_group_name" {
   description = "Name of cloudwatch log group created"
   value       = aws_cloudwatch_log_group.this[*].name
@@ -55,7 +63,7 @@ output "cloudwatch_log_group_name" {
 
 output "kubeconfig" {
   description = "kubectl config file contents for this EKS cluster."
-  value       = concat(data.template_file.kubeconfig[*].rendered, [""])[0]
+  value       = local.kubeconfig
 }
 
 output "kubeconfig_filename" {
@@ -153,16 +161,6 @@ output "worker_iam_role_arn" {
   )[0]
 }
 
-output "worker_autoscaling_policy_name" {
-  description = "Name of the worker autoscaling IAM policy if `manage_worker_autoscaling_policy = true`"
-  value       = concat(aws_iam_policy.worker_autoscaling[*].name, [""])[0]
-}
-
-output "worker_autoscaling_policy_arn" {
-  description = "ARN of the worker autoscaling IAM policy if `manage_worker_autoscaling_policy = true`"
-  value       = concat(aws_iam_policy.worker_autoscaling[*].arn, [""])[0]
-}
-
 output "node_groups" {
   description = "Outputs from EKS node groups. Map of maps, keyed by var.node_groups keys"
   value       = module.node_groups.node_groups
@@ -170,4 +168,9 @@ output "node_groups" {
 
 output "node_group_sg_id" {
   value = data.aws_eks_cluster.my-eks-cluster.vpc_config[*].cluster_security_group_id
+}
+
+output "security_group_rule_cluster_https_worker_ingress" {
+  description = "Security group rule responsible for allowing pods to communicate with the EKS cluster API."
+  value       = aws_security_group_rule.cluster_https_worker_ingress
 }

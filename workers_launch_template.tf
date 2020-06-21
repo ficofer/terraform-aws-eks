@@ -72,6 +72,21 @@ resource "aws_autoscaling_group" "workers_launch_template" {
     "termination_policies",
     local.workers_group_defaults["termination_policies"]
   )
+  max_instance_lifetime = lookup(
+    var.worker_groups_launch_template[count.index],
+    "max_instance_lifetime",
+    local.workers_group_defaults["max_instance_lifetime"],
+  )
+  default_cooldown = lookup(
+    var.worker_groups_launch_template[count.index],
+    "default_cooldown",
+    local.workers_group_defaults["default_cooldown"]
+  )
+  health_check_grace_period = lookup(
+    var.worker_groups_launch_template[count.index],
+    "health_check_grace_period",
+    local.workers_group_defaults["health_check_grace_period"]
+  )
 
   dynamic mixed_instances_policy {
     iterator = item
@@ -179,29 +194,6 @@ resource "aws_autoscaling_group" "workers_launch_template" {
         "value"               = "owned"
         "propagate_at_launch" = true
       },
-      {
-        "key" = "k8s.io/cluster-autoscaler/${lookup(
-          var.worker_groups_launch_template[count.index],
-          "autoscaling_enabled",
-          local.workers_group_defaults["autoscaling_enabled"],
-        ) ? "enabled" : "disabled"}"
-        "value"               = "true"
-        "propagate_at_launch" = false
-      },
-      {
-        "key"                 = "k8s.io/cluster-autoscaler/${aws_eks_cluster.this[0].name}"
-        "value"               = aws_eks_cluster.this[0].name
-        "propagate_at_launch" = false
-      },
-      {
-        "key" = "k8s.io/cluster-autoscaler/node-template/resources/ephemeral-storage"
-        "value" = "${lookup(
-          var.worker_groups_launch_template[count.index],
-          "root_volume_size",
-          local.workers_group_defaults["root_volume_size"],
-        )}Gi"
-        "propagate_at_launch" = false
-      },
     ],
     local.asg_tags,
     lookup(
@@ -302,17 +294,17 @@ resource "aws_launch_template" "workers_launch_template" {
     )
   }
 
-  placement {
-    tenancy = lookup(
-      var.worker_groups_launch_template[count.index],
-      "launch_template_placement_tenancy",
-      local.workers_group_defaults["launch_template_placement_tenancy"],
-    )
-    group_name = lookup(
-      var.worker_groups_launch_template[count.index],
-      "launch_template_placement_group",
-      local.workers_group_defaults["launch_template_placement_group"],
-    )
+  dynamic placement {
+    for_each = lookup(var.worker_groups_launch_template[count.index], "launch_template_placement_group", local.workers_group_defaults["launch_template_placement_group"]) != null ? [lookup(var.worker_groups_launch_template[count.index], "launch_template_placement_group", local.workers_group_defaults["launch_template_placement_group"])] : []
+
+    content {
+      tenancy = lookup(
+        var.worker_groups_launch_template[count.index],
+        "launch_template_placement_tenancy",
+        local.workers_group_defaults["launch_template_placement_tenancy"],
+      )
+      group_name = placement.value
+    }
   }
 
   dynamic instance_market_options {
@@ -359,8 +351,60 @@ resource "aws_launch_template" "workers_launch_template" {
     }
   }
 
+  dynamic "block_device_mappings" {
+    for_each = lookup(var.worker_groups_launch_template[count.index], "additional_ebs_volumes", local.workers_group_defaults["additional_ebs_volumes"])
+    content {
+      device_name = block_device_mappings.value.block_device_name
+
+      ebs {
+        volume_size = lookup(
+          block_device_mappings.value,
+          "volume_size",
+          local.workers_group_defaults["root_volume_size"],
+        )
+        volume_type = lookup(
+          block_device_mappings.value,
+          "volume_type",
+          local.workers_group_defaults["root_volume_type"],
+        )
+        iops = lookup(
+          block_device_mappings.value,
+          "iops",
+          local.workers_group_defaults["root_iops"],
+        )
+        encrypted = lookup(
+          block_device_mappings.value,
+          "encrypted",
+          local.workers_group_defaults["root_encrypted"],
+        )
+        kms_key_id = lookup(
+          block_device_mappings.value,
+          "kms_key_id",
+          local.workers_group_defaults["root_kms_key_id"],
+        )
+        delete_on_termination = lookup(block_device_mappings.value, "delete_on_termination", true)
+      }
+    }
+
+  }
+
   tag_specifications {
     resource_type = "volume"
+
+    tags = merge(
+      {
+        "Name" = "${aws_eks_cluster.this[0].name}-${lookup(
+          var.worker_groups_launch_template[count.index],
+          "name",
+          count.index,
+        )}-eks_asg"
+      },
+      var.tags,
+    )
+  }
+
+  tag_specifications {
+    resource_type = "instance"
 
     tags = merge(
       {
